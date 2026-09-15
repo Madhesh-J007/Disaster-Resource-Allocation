@@ -1,0 +1,16 @@
+feature_name,scaler_used,variance,skewness
+population,RobustScaler (High Skew),2844344205441.9,4.17687639419192
+pop_density_per_sq_km,RobustScaler (High Skew),16769958.837126594,6.138676822250927
+elevation_m,RobustScaler (High Skew),132364.2560455192,4.954738484510798
+slum_pop_pct,StandardScaler (Gaussian),17.40848506401138,1.1556018160208885
+pukka_housing_pct,StandardScaler (Gaussian),59.175825035561886,0.46667427609027184
+terrain_risk,StandardScaler,0.09083145945945946,0.9384586461518868
+low_lying_area_flag,StandardScaler,0.13655761024182075,1.9543974764322565
+police_station_density,StandardScaler,0.00011779735419630159,3.5065819871824173
+critical_infrastructure_count,StandardScaler,201.6443812233286,2.42540807754029
+disaster_frequency,StandardScaler,2.0284495021337126,2.6040215229079764
+flood_frequency,StandardScaler,0.5554765291607399,2.2316457730561177
+cyclone_frequency,StandardScaler,0.43812233285917496,2.5032574868033124
+historical_damage_score,StandardScaler,48.69792861385491,0.37080666458046885
+infrastructure_vulnerability_index,StandardScaler,0.009032177524893315,0.2196226340917747
+accessibility_index,StandardScaler,0.03618253272403984,1.7019416896194386

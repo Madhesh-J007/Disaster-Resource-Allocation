@@ -1,0 +1,39 @@
+district,latitude,longitude,elevation_m,risk_category,source
+Ariyalur,11.1401,79.0786,82.0,Moderate Plain Vulnerability,SRTM_30m
+Chengalpattu,12.6841,79.9836,45.0,Moderate Plain Vulnerability,SRTM_30m
+Chennai,13.0827,80.2707,12.0,High Flood Inundation Vulnerability,SRTM_30m
+Coimbatore,11.0168,76.9558,431.0,Low Inundation Risk,SRTM_30m
+Cuddalore,11.748,79.7714,7.0,High Flood Inundation Vulnerability,SRTM_30m
+Dharmapuri,12.1211,78.1582,461.0,Low Inundation Risk,SRTM_30m
+Dindigul,10.3673,77.9803,284.0,Low Inundation Risk,SRTM_30m
+Erode,11.341,77.7172,177.0,Low Inundation Risk,SRTM_30m
+Kallakurichi,11.7384,78.9639,131.0,Low Inundation Risk,SRTM_30m
+Kanchipuram,12.8342,79.7036,88.0,Moderate Plain Vulnerability,SRTM_30m
+Kanyakumari,8.1833,77.4119,58.0,Moderate Plain Vulnerability,SRTM_30m
+Karur,10.9601,78.0766,128.0,Low Inundation Risk,SRTM_30m
+Krishnagiri,12.5186,78.2137,489.0,Low Inundation Risk,SRTM_30m
+Madurai,9.9252,78.1198,141.0,Low Inundation Risk,SRTM_30m
+Mayiladuthurai,11.1018,79.6522,17.0,Moderate Plain Vulnerability,SRTM_30m
+Nagapattinam,10.7656,79.8424,7.0,High Flood Inundation Vulnerability,SRTM_30m
+Namakkal,11.2189,78.1674,200.0,Low Inundation Risk,SRTM_30m
+Nilgiris,11.4102,76.695,2235.0,High Landslide Vulnerability,SRTM_30m
+Perambalur,11.2342,78.8824,123.0,Low Inundation Risk,SRTM_30m
+Pudukkottai,10.3797,78.8208,100.0,Moderate Plain Vulnerability,SRTM_30m
+Ramanathapuram,9.3639,78.8395,11.0,High Flood Inundation Vulnerability,SRTM_30m
+Ranipet,12.9272,79.3331,171.0,Low Inundation Risk,SRTM_30m
+Salem,11.6643,78.146,284.0,Low Inundation Risk,SRTM_30m
+Sivaganga,9.8433,78.4809,99.0,Moderate Plain Vulnerability,SRTM_30m
+Tenkasi,8.9594,77.315,170.0,Low Inundation Risk,SRTM_30m
+Thanjavur,10.787,79.1378,59.0,Moderate Plain Vulnerability,SRTM_30m
+Theni,10.0104,77.4768,298.0,Low Inundation Risk,SRTM_30m
+Tiruchirappalli,10.7905,78.7047,80.0,Moderate Plain Vulnerability,SRTM_30m
+Tirunelveli,8.7139,77.7567,50.0,Moderate Plain Vulnerability,SRTM_30m
+Tirupathur,12.4926,78.5678,392.0,Low Inundation Risk,SRTM_30m
+Tiruppur,11.1085,77.3411,304.0,Low Inundation Risk,SRTM_30m
+Tiruvallur,13.1432,79.9079,47.0,Moderate Plain Vulnerability,SRTM_30m
+Tiruvannamalai,12.2253,79.0747,173.0,Low Inundation Risk,SRTM_30m
+Tiruvarur,10.7708,79.6366,14.0,High Flood Inundation Vulnerability,SRTM_30m
+Tuticorin,8.7642,78.1348,3.0,High Flood Inundation Vulnerability,SRTM_30m
+Vellore,12.9165,79.1325,218.0,Low Inundation Risk,SRTM_30m
+Villupuram,11.9401,79.4861,48.0,Moderate Plain Vulnerability,SRTM_30m
+Virudhunagar,9.568,77.9624,95.0,Moderate Plain Vulnerability,SRTM_30m

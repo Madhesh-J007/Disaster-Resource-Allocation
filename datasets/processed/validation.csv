@@ -1,0 +1,6 @@
+district_id,district,population,pop_density_per_sq_km,elevation_m,recent_7d_precip_mm,heavy_rain_event_count,slum_pop_pct,pukka_housing_pct,vulnerability_score,composite_vulnerability_index,historical_disaster_deaths,historical_affected,cascade_risk_score,secondary_disaster_triggered
+36,Vellore,1614242,795,218.0,25.67,18,16.5,76.4,0.51,20.21,41,680125,0.2806,0
+4,Coimbatore,3458045,732,431.0,25.67,18,12.1,86.1,0.38,13.6,420,33620,0.203,0
+35,Tuticorin,1750176,372,3.0,25.67,18,13.0,78.2,0.52,16.69,32,845120,0.5272,1
+24,Sivaganga,1339101,320,99.0,25.67,18,11.2,71.5,0.55,19.91,0,10000,0.2763,0
+32,Tiruvallur,3728104,1089,47.0,25.67,18,22.1,83.0,0.56,18.83,556,5261630,0.4259,0

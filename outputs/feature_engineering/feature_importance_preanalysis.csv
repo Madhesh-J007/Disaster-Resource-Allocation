@@ -1,0 +1,16 @@
+feature_name,importance_score
+terrain_risk,0.24417982398300642
+accessibility_index,0.2013974645131946
+low_lying_area_flag,0.15130256379951496
+disaster_frequency,0.09913147474758366
+elevation_m,0.0923048701373205
+historical_damage_score,0.09131082445287418
+slum_pop_pct,0.050331415242126164
+cyclone_frequency,0.02687272363603856
+pop_density_per_sq_km,0.00909146296202378
+infrastructure_vulnerability_index,0.00865212242217244
+pukka_housing_pct,0.00801033505340989
+population,0.006343140169860247
+critical_infrastructure_count,0.0056099898665234
+flood_frequency,0.003093835778559482
+police_station_density,0.002367953235791766

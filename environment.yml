@@ -1,0 +1,23 @@
+name: secondary-disaster-ml
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - numpy
+  - pandas
+  - scikit-learn
+  - xgboost
+  - lightgbm
+  - networkx
+  - geopandas
+  - rasterio
+  - flask
+  - pyyaml
+  - matplotlib
+  - seaborn
+  - plotly
+  - pytest
+  - pip
+  - pip:
+    - shap

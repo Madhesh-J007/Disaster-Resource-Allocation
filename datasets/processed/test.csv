@@ -1,0 +1,8 @@
+district_id,district,population,pop_density_per_sq_km,elevation_m,recent_7d_precip_mm,heavy_rain_event_count,slum_pop_pct,pukka_housing_pct,vulnerability_score,composite_vulnerability_index,historical_disaster_deaths,historical_affected,cascade_risk_score,secondary_disaster_triggered
+11,Kanyakumari,1870374,1119,58.0,25.67,18,8.5,88.9,0.58,9.49,8009,976913,0.2842,0
+23,Salem,3482056,669,284.0,25.67,18,16.0,74.2,0.52,22.15,0,10000,0.3023,0
+19,Perambalur,565223,322,123.0,25.67,18,8.4,65.4,0.59,22.34,0,10000,0.3017,0
+21,Ramanathapuram,1353445,333,11.0,25.67,18,15.6,66.8,0.76,23.38,0,10000,0.5809,1
+8,Erode,2251744,394,177.0,25.67,18,10.9,78.4,0.42,18.48,0,10000,0.2573,0
+15,Mayiladuthurai,918356,784,17.0,25.67,18,17.5,64.5,0.74,24.58,0,10000,0.5805,1
+29,Tirunelveli,1665258,433,50.0,25.67,18,15.3,75.6,0.5,19.38,32,845120,0.4181,0

@@ -1,0 +1,1 @@
+"""GIS map generation module."""

@@ -1,0 +1,167 @@
+{
+  "dataset_size": 3500,
+  "features_count": 11,
+  "disaster_model": {
+    "accuracy": 0.9242857142857143,
+    "precision": 0.9288130699769384,
+    "recall": 0.9242857142857143,
+    "f1_score": 0.9142427837125722,
+    "classes": [
+      "Disease Outbreak",
+      "Fire",
+      "Flood",
+      "Infrastructure Failure",
+      "Landslide"
+    ],
+    "confusion_matrix": [
+      [
+        2,
+        5,
+        12,
+        2,
+        0
+      ],
+      [
+        0,
+        180,
+        1,
+        2,
+        0
+      ],
+      [
+        0,
+        0,
+        200,
+        20,
+        0
+      ],
+      [
+        0,
+        4,
+        0,
+        144,
+        1
+      ],
+      [
+        0,
+        6,
+        0,
+        0,
+        121
+      ]
+    ],
+    "feature_importances": [
+      {
+        "feature": "primary_disaster_Heavy Rain",
+        "importance": 0.16990370064195992
+      },
+      {
+        "feature": "primary_disaster_Cyclone",
+        "importance": 0.12138400845655643
+      },
+      {
+        "feature": "wind_speed_kmph",
+        "importance": 0.10953607694440674
+      },
+      {
+        "feature": "rainfall_mm",
+        "importance": 0.09575593120203169
+      },
+      {
+        "feature": "primary_disaster_Landslide Trigger",
+        "importance": 0.09325257536113307
+      },
+      {
+        "feature": "soil_moisture",
+        "importance": 0.0841508514748301
+      },
+      {
+        "feature": "elevation_m",
+        "importance": 0.0675989417988039
+      },
+      {
+        "feature": "temperature_c",
+        "importance": 0.06158506013332146
+      },
+      {
+        "feature": "river_level_m",
+        "importance": 0.057425913473918046
+      },
+      {
+        "feature": "distance_to_water_body",
+        "importance": 0.028603568203125554
+      },
+      {
+        "feature": "infrastructure_vulnerability",
+        "importance": 0.027560375798790577
+      },
+      {
+        "feature": "primary_disaster_Earthquake",
+        "importance": 0.026072108115642225
+      },
+      {
+        "feature": "population_density",
+        "importance": 0.023149530415508775
+      },
+      {
+        "feature": "primary_disaster_Extreme Heat",
+        "importance": 0.018040786049133156
+      },
+      {
+        "feature": "road_accessibility",
+        "importance": 0.015980571930838114
+      }
+    ]
+  },
+  "severity_model": {
+    "accuracy": 0.8242857142857143,
+    "precision": 0.8411930588351043,
+    "recall": 0.8242857142857143,
+    "f1_score": 0.8086442733884593,
+    "classes": [
+      "Critical",
+      "High",
+      "Low",
+      "Medium"
+    ],
+    "confusion_matrix": [
+      [
+        23,
+        40,
+        0,
+        0
+      ],
+      [
+        0,
+        387,
+        0,
+        17
+      ],
+      [
+        0,
+        0,
+        1,
+        9
+      ],
+      [
+        0,
+        57,
+        0,
+        166
+      ]
+    ]
+  },
+  "class_distribution": {
+    "Flood": 1102,
+    "Fire": 913,
+    "Infrastructure Failure": 747,
+    "Landslide": 633,
+    "Disease Outbreak": 105
+  },
+  "severity_distribution": {
+    "High": 2023,
+    "Medium": 1051,
+    "Critical": 365,
+    "Low": 61
+  }
+}

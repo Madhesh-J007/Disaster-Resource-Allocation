@@ -1,0 +1,48 @@
+{
+  "data": [
+    {
+      "id": 50101,
+      "fields": {
+        "name": "India: Floods - Nov 2015",
+        "status": "past",
+        "primary_country": {
+          "name": "India",
+          "location": {
+            "lat": 13.0827,
+            "lon": 80.2707
+          }
+        },
+        "type": [
+          {
+            "name": "Flood"
+          }
+        ],
+        "date": {
+          "created": "2015-11-10T00:00:00+00:00"
+        }
+      }
+    },
+    {
+      "id": 50102,
+      "fields": {
+        "name": "India: Cyclone Gaja - Nov 2018",
+        "status": "past",
+        "primary_country": {
+          "name": "India",
+          "location": {
+            "lat": 10.7656,
+            "lon": 79.8424
+          }
+        },
+        "type": [
+          {
+            "name": "Tropical Cyclone"
+          }
+        ],
+        "date": {
+          "created": "2018-11-12T00:00:00+00:00"
+        }
+      }
+    }
+  ]
+}
