@@ -1,462 +1,816 @@
 import React, { useState, useEffect } from 'react';
 import { 
   ShieldAlert, AlertTriangle, Activity, Database, CheckCircle, ArrowRight,
-  TrendingUp, BarChart2, Zap, Server, Radio, Cpu, Layers, MapPin, Sliders, ShieldCheck
+  TrendingUp, BarChart2, Zap, Server, Radio, Cpu, Layers, MapPin, Sliders, ShieldCheck,
+  AlertCircle, Users, Truck, Hospital, Building, Mountain, RefreshCw, Play, Info, Eye, FileText
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie
 } from 'recharts';
-import { fetchStatistics, fetchDemoScenarios, predictDisaster } from '../services/api';
+import SearchableDistrictSelector from '../components/SearchableDistrictSelector';
+import { 
+  fetchDistricts, 
+  fetchDistrictInfo, 
+  assessLocationImpact, 
+  fetchDemoScenarios, 
+  runSimulation 
+} from '../services/api';
+
+const PRIMARY_DISASTERS = [
+  'Heavy Rain', 'Cyclone', 'Earthquake', 'Extreme Heat', 'Landslide Trigger'
+];
 
 const CATEGORY_COLORS = {
-  'Flood': '#ef4444',                  // Red
-  'Fire': '#f97316',                   // Orange
-  'Infrastructure Failure': '#8b5cf6', // Purple
-  'Landslide': '#f59e0b',              // Amber
-  'Disease Outbreak': '#3b82f6'        // Blue
+  'Flood': '#ef4444',
+  'Fire': '#f97316',
+  'Infrastructure Failure': '#8b5cf6',
+  'Landslide': '#f59e0b',
+  'Disease Outbreak': '#3b82f6'
 };
 
 const SEVERITY_COLORS = {
-  'Critical': '#dc2626', // Red
-  'High': '#f59e0b',     // Amber
-  'Medium': '#3b82f6',   // Blue
-  'Low': '#10b981'       // Green
+  'Critical': '#dc2626',
+  'High': '#f59e0b',
+  'Medium': '#3b82f6',
+  'Low': '#10b981'
 };
 
-export default function DashboardPage({ setActiveTab, setPredictFormData, setLastPrediction, lastPrediction }) {
-  const [stats, setStats] = useState(null);
-  const [demos, setDemos] = useState([]);
+export default function DashboardPage({ setActiveTab, setPredictFormData, setLastPrediction }) {
+  const [districts, setDistricts] = useState([]);
+  const [selectedDistrict, setSelectedDistrict] = useState('Chennai');
+  const [primaryDisaster, setPrimaryDisaster] = useState('Heavy Rain');
+  const [scenarioInputs, setScenarioInputs] = useState(null);
+
+  const [locationImpact, setLocationImpact] = useState(null);
+  const [isAssessmentPending, setIsAssessmentPending] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeDemo, setActiveDemo] = useState(null);
-  const [timeStr, setTimeStr] = useState('');
+  const [evaluating, setEvaluating] = useState(false);
+  const [demos, setDemos] = useState([]);
 
-  const [recentLog, setRecentLog] = useState([
-    { id: 1, time: '16:15:02', primary: 'Heavy Rain', secondary: 'Flood', severity: 'Critical', risk: 92, status: 'EVALUATED' },
-    { id: 2, time: '15:42:18', primary: 'Cyclone', secondary: 'Infrastructure Failure', severity: 'High', risk: 78, status: 'EVALUATED' },
-    { id: 3, time: '14:20:55', primary: 'Landslide Trigger', secondary: 'Landslide', severity: 'High', risk: 81, status: 'EVALUATED' },
-    { id: 4, time: '12:05:40', primary: 'Extreme Heat', secondary: 'Fire', severity: 'Medium', risk: 54, status: 'EVALUATED' }
-  ]);
+  // Location-aware simulator states
+  const [simModified, setSimModified] = useState(null);
+  const [simResult, setSimResult] = useState(null);
+  const [simLoading, setSimLoading] = useState(false);
 
+  // Load Tamil Nadu districts list & initial Chennai impact assessment on mount
   useEffect(() => {
-    async function loadData() {
+    async function initDashboard() {
       try {
-        const s = await fetchStatistics();
-        setStats(s);
-        const d = await fetchDemoScenarios();
-        setDemos(d.scenarios || []);
+        const distData = await fetchDistricts();
+        setDistricts(Array.isArray(distData) ? distData : (distData.districts || []));
+        
+        const demoData = await fetchDemoScenarios();
+        setDemos(demoData.scenarios || []);
+
+        // Initial mount: load Chennai baseline ONLY into Tier 1 (no automatic ML prediction)
+        const base = await fetchDistrictInfo('Chennai');
+        const inputs = { ...base, primary_disaster: 'Heavy Rain' };
+        setScenarioInputs(inputs);
+        setLocationImpact(null);
+        setIsAssessmentPending(true);
+
+        setSimModified({
+          ...inputs,
+          rainfall_mm: Math.min(400, Math.round(inputs.rainfall_mm * 1.3)),
+          river_level_m: Math.min(14, Math.round(inputs.river_level_m * 1.25 * 10) / 10),
+          soil_moisture: Math.min(1.0, Math.round((inputs.soil_moisture + 0.10) * 100) / 100)
+        });
       } catch (err) {
-        console.error('Error fetching dashboard stats:', err);
+        console.error('Error initializing location-aware dashboard:', err);
       } finally {
         setLoading(false);
       }
     }
-    loadData();
-
-    const updateClock = () => {
-      const now = new Date();
-      setTimeStr(now.toTimeString().split(' ')[0] + ' LOCAL');
-    };
-    updateClock();
-    const interval = setInterval(updateClock, 1000);
-    return () => clearInterval(interval);
+    initDashboard();
   }, []);
 
-  const handleRunDemo = async (scenario) => {
-    setActiveDemo(scenario.id);
+  // STEP 1: District selector change -> Loads baseline ONLY into Tier 1, DOES NOT run ML prediction
+  const handleDistrictChange = async (dName) => {
+    setSelectedDistrict(dName);
+    setEvaluating(true);
     try {
-      const res = await predictDisaster(scenario.data);
-      setLastPrediction(res);
-      setPredictFormData(scenario.data);
-      
-      const newEntry = {
-        id: Date.now(),
-        time: new Date().toLocaleTimeString(),
-        primary: scenario.data.primary_disaster,
-        secondary: res.predicted_secondary_disaster,
-        severity: res.severity,
-        risk: res.risk_score,
-        status: 'EVALUATED'
-      };
-      setRecentLog(prev => [newEntry, ...prev.slice(0, 4)]);
-      setActiveTab('predict');
+      const base = await fetchDistrictInfo(dName);
+      const inputs = { ...base, primary_disaster: primaryDisaster };
+      setScenarioInputs(inputs);
+
+      // Explicitly mark assessment as pending and clear downstream ML prediction results
+      setIsAssessmentPending(true);
+      setLocationImpact(null);
     } catch (err) {
-      alert('Error running demo prediction: ' + err.message);
+      console.error(`Error loading baseline for ${dName}:`, err);
     } finally {
-      setActiveDemo(null);
+      setEvaluating(false);
     }
   };
 
-  const handleLoadLogEntry = (logItem) => {
-    // Map log entry to corresponding demo or predict state
-    const matchedDemo = demos.find(d => d.data.primary_disaster === logItem.primary);
-    if (matchedDemo) {
-      setPredictFormData(matchedDemo.data);
-    }
-    setActiveTab('predict');
+  // STEP 1: Primary disaster change -> Updates inputs, DOES NOT run ML prediction
+  const handleDisasterChange = (disaster) => {
+    setPrimaryDisaster(disaster);
+    setScenarioInputs(prev => ({
+      ...prev,
+      primary_disaster: disaster
+    }));
+    setIsAssessmentPending(true);
+    setLocationImpact(null);
   };
 
-  // Distribution chart data
-  const chartData = stats?.class_distribution 
-    ? Object.entries(stats.class_distribution)
-        .map(([name, count]) => ({ name, count, percentage: Math.round((count / (stats.dataset_size || 3500)) * 100) }))
-        .sort((a, b) => b.count - a.count)
-    : [
-        { name: 'Flood', count: 1102, percentage: 31 },
-        { name: 'Fire', count: 913, percentage: 26 },
-        { name: 'Infrastructure Failure', count: 747, percentage: 21 },
-        { name: 'Landslide', count: 633, percentage: 18 },
-        { name: 'Disease Outbreak', count: 105, percentage: 3 }
-      ];
+  // STEP 1: Numeric input change -> Updates inputs, DOES NOT run ML prediction
+  const handleInputChange = (field, val) => {
+    setScenarioInputs(prev => ({
+      ...prev,
+      [field]: parseFloat(val) || 0
+    }));
+    setIsAssessmentPending(true);
+    setLocationImpact(null);
+  };
 
-  // Severity donut chart data
-  const severityData = stats?.severity_distribution
-    ? Object.entries(stats.severity_distribution).map(([name, count]) => ({
+  // STEP 2: Explicit "ASSESS DISASTER IMPACT" click -> Runs ML models & updates Tier 2+
+  const handleRunAssessment = async (e) => {
+    if (e) e.preventDefault();
+    setEvaluating(true);
+    try {
+      const impact = await assessLocationImpact({
+        location: selectedDistrict,
+        primary_disaster: primaryDisaster,
+        ...scenarioInputs
+      });
+      setLocationImpact(impact);
+      setLastPrediction(impact);
+      setIsAssessmentPending(false);
+
+      // Re-initialize simulator inputs
+      setSimModified({
+        ...scenarioInputs,
+        rainfall_mm: Math.min(400, Math.round(scenarioInputs.rainfall_mm * 1.3)),
+        river_level_m: Math.min(14, Math.round(scenarioInputs.river_level_m * 1.25 * 10) / 10),
+        soil_moisture: Math.min(1.0, Math.round((scenarioInputs.soil_moisture + 0.10) * 100) / 100)
+      });
+    } catch (err) {
+      alert('Error evaluating location impact: ' + err.message);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const handleRunDemoScenario = async (demo) => {
+    const loc = demo.location || 'Chennai';
+    setSelectedDistrict(loc);
+    setPrimaryDisaster(demo.data.primary_disaster);
+    setScenarioInputs(demo.data);
+    setPredictFormData(demo.data);
+
+    setEvaluating(true);
+    try {
+      const impact = await assessLocationImpact({
+        location: loc,
+        primary_disaster: demo.data.primary_disaster,
+        ...demo.data
+      });
+      setLocationImpact(impact);
+      setLastPrediction(impact);
+      setIsAssessmentPending(false);
+    } catch (err) {
+      alert('Error running demo scenario: ' + err.message);
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  const handleRunSim = async () => {
+    if (!scenarioInputs || !simModified) return;
+    setSimLoading(true);
+    try {
+      const res = await runSimulation(scenarioInputs, simModified, selectedDistrict);
+      setSimResult(res);
+    } catch (err) {
+      alert('Simulation error: ' + err.message);
+    } finally {
+      setSimLoading(false);
+    }
+  };
+
+  // Probabilities chart data
+  const probChartData = locationImpact?.class_probabilities
+    ? Object.entries(locationImpact.class_probabilities).map(([name, prob]) => ({
         name,
-        count,
-        percentage: Math.round((count / (stats.dataset_size || 3500)) * 100)
+        probability: Math.round(prob * 100)
       }))
-    : [
-        { name: 'High', count: 2023, percentage: 58 },
-        { name: 'Medium', count: 1051, percentage: 30 },
-        { name: 'Critical', count: 365, percentage: 10 },
-        { name: 'Low', count: 61, percentage: 2 }
-      ];
-
-  // Regional Sectors Grid (Placeholder geospatial overview mapped to dataset regions)
-  const regionalSectors = [
-    { id: 1, name: 'Coastal Basin Sector', region: 'East Coastal Belt', hazard: 'Flood Inundation', level: 'HIGH RISK', color: 'text-red-400 border-red-800/80 bg-red-950/40', rain: '280 mm', elev: '15 m', pop: '9,500/km²' },
-    { id: 2, name: 'Hill Slope Elevation Zone', region: 'Western Ghats Ridge', hazard: 'Landslide Flow', level: 'ELEVATED', color: 'text-amber-400 border-amber-800/80 bg-amber-950/40', rain: '180 mm', elev: '850 m', pop: '1,500/km²' },
-    { id: 3, name: 'Dense Urban Core Node', region: 'Metropolitan Grid', hazard: 'Infra Collapse', level: 'CRITICAL', color: 'text-red-500 border-red-700 bg-red-950/60', rain: '45 mm', elev: '35 m', pop: '12,000/km²' },
-    { id: 4, name: 'Inland Thermal Plain', region: 'Central Dry Zone', hazard: 'Fire / Thermal Stress', level: 'MODERATE', color: 'text-blue-400 border-blue-800/80 bg-blue-950/40', rain: '10 mm', elev: '120 m', pop: '4,200/km²' }
-  ];
-
-  const currentRiskDisplay = lastPrediction ? {
-    disaster: lastPrediction.predicted_secondary_disaster,
-    severity: lastPrediction.severity,
-    score: lastPrediction.risk_score,
-    prob: Math.round(lastPrediction.secondary_disaster_probability * 100),
-    primary: lastPrediction.primary_disaster,
-    isRealtime: true
-  } : {
-    disaster: 'Flood Inundation',
-    severity: 'High',
-    score: 81,
-    prob: 85,
-    primary: 'Heavy Rain',
-    isRealtime: false
-  };
+    : [];
 
   return (
-    <div className="space-y-5 text-slate-100">
+    <div className="space-y-6 text-slate-100">
       
-      {/* A. COMMAND HEADER */}
-      <div className="bg-[#121827] px-5 py-4 rounded-lg border border-slate-800/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* 1. LOCATION-AWARE EOC COMMAND HEADER */}
+      <div className="bg-[#121827] px-5 py-4 rounded-lg border border-slate-800/80 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center space-x-3">
             <h1 className="text-xl font-extrabold text-white font-mono tracking-tight flex items-center gap-2">
-              <span>EMERGENCY OPERATIONS CENTER</span>
+              <span>LOCATION-AWARE DISASTER IMPACT ASSESSMENT</span>
             </h1>
-            <span className="text-[10px] px-2 py-0.5 rounded bg-red-950/90 text-red-400 border border-red-800/80 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
-              <Radio className="w-3 h-3 animate-pulse text-red-400" />
-              LIVE MONITORING
+            <span className="text-[10px] px-2 py-0.5 rounded bg-blue-950 text-blue-400 border border-blue-800/80 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
+              <Radio className="w-3 h-3 animate-pulse text-blue-400" />
+              TAMIL NADU DECISION SUPPORT
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time multi-hazard chain reaction risk assessment & emergency resource intelligence.
+            Answers: <em>"If a disaster occurs in a specific district, what happens next, what is affected, and what resources are required?"</em>
           </p>
         </div>
 
-        <div className="flex items-center space-x-3 shrink-0">
-          <div className="hidden sm:flex flex-col items-end text-[11px] font-mono text-slate-400 pr-2 border-r border-slate-800">
-            <span className="text-slate-300 font-semibold">{timeStr}</span>
-            <span className="text-[10px] text-emerald-400">MODELS LOADED (2/2)</span>
+        {/* Technical Evidence Tier Badges */}
+        <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono">
+          <span className="px-2.5 py-1 bg-emerald-950/80 text-emerald-400 rounded border border-emerald-800/80 flex items-center gap-1">
+            <Database className="w-3 h-3" /> 1. OBSERVED DISTRICT DATA
+          </span>
+          <span className="px-2.5 py-1 bg-amber-950/80 text-amber-300 rounded border border-amber-800/80 flex items-center gap-1">
+            <Cpu className="w-3 h-3" /> 2. ML MODEL PREDICTION
+          </span>
+          <span className="px-2.5 py-1 bg-purple-950/80 text-purple-300 rounded border border-purple-800/80 flex items-center gap-1">
+            <Building className="w-3 h-3" /> 3. DERIVED EXPOSURE
+          </span>
+        </div>
+      </div>
+
+      {/* 2. TOP LOCATION & SCENARIO SELECTION BAR */}
+      <div className="bg-[#121827] p-4 sm:p-5 rounded-lg border border-slate-800/80 space-y-4 shadow-xl">
+        <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+          <h2 className="text-xs font-bold text-slate-200 uppercase font-mono tracking-wider flex items-center gap-2">
+            <MapPin className="w-4 h-4 text-blue-400" />
+            <span>Select Target Location & Primary Event</span>
+          </h2>
+          <span className="text-[10px] text-slate-400 font-mono">
+            38 Tamil Nadu Districts Available
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* Location / District Searchable Selector */}
+          <div>
+            <label className="block text-[11px] font-mono font-bold text-slate-300 uppercase mb-1.5">
+              Location / District:
+            </label>
+            <SearchableDistrictSelector
+              districts={districts}
+              selectedDistrict={selectedDistrict}
+              onSelectDistrict={handleDistrictChange}
+            />
           </div>
 
+          {/* Primary Disaster Selector */}
+          <div>
+            <label className="block text-[11px] font-mono font-bold text-slate-300 uppercase mb-1.5">
+              Primary Event:
+            </label>
+            <select
+              value={primaryDisaster}
+              onChange={(e) => handleDisasterChange(e.target.value)}
+              className="w-full bg-[#0b0f19] border border-slate-700 hover:border-slate-500 rounded p-2.5 text-xs font-mono text-white font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all shadow-inner"
+            >
+              {PRIMARY_DISASTERS.map(pd => (
+                <option key={pd} value={pd}>🌧 {pd}</option>
+              ))}
+            </select>
+          </div>
+
+        </div>
+
+        {/* Assess Button */}
+        <div className="pt-1">
           <button
-            onClick={() => setActiveTab('predict')}
-            className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-md text-xs font-bold font-mono tracking-wider shadow-md transition-all border border-blue-400/30"
+            onClick={handleRunAssessment}
+            disabled={evaluating}
+            className="w-full py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-mono font-extrabold text-xs uppercase tracking-wider rounded transition-all shadow-lg shadow-blue-950/60 flex items-center justify-center space-x-2 border border-blue-400/30 cursor-pointer"
           >
-            <span>LAUNCH PREDICTOR</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            {evaluating ? (
+              <span>Evaluating Location Impact...</span>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
+                <span>Assess Disaster Impact</span>
+              </>
+            )}
           </button>
         </div>
       </div>
 
-      {/* B. PRIORITY RISK & SITUATION SUMMARY GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
-        {/* FOCAL HERO CARD: Priority Risk Assessment (7 Cols) */}
-        <div className="lg:col-span-7 bg-[#121827] p-5 rounded-lg border border-slate-800/80 space-y-4 relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute top-0 right-0 w-64 h-full bg-gradient-to-l from-red-950/20 to-transparent pointer-events-none"></div>
-          
+      {/* 3. SCENARIO INPUT CONDITIONS GRID */}
+      {scenarioInputs && (
+        <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2 text-xs font-mono">
+            <span className="font-bold text-slate-300 uppercase flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-amber-400" />
+              <span>TIER 1: OBSERVED DISTRICT BASELINE ({selectedDistrict}) + SCENARIO INPUTS</span>
+            </span>
+            <button 
+              onClick={() => handleDistrictChange(selectedDistrict)}
+              className="text-[10px] text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" /> Reset to District Baseline
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2 text-[11px] font-mono">
+            <div>
+              <span className="text-slate-400 text-[10px] block">Rainfall (mm)</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.rainfall_mm} 
+                onChange={(e) => handleInputChange('rainfall_mm', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-blue-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">River Stage (m)</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.river_level_m} 
+                onChange={(e) => handleInputChange('river_level_m', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-blue-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Soil Saturation</span>
+              <input 
+                type="number" 
+                step="0.01"
+                value={scenarioInputs.soil_moisture} 
+                onChange={(e) => handleInputChange('soil_moisture', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-emerald-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Wind (km/h)</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.wind_speed_kmph} 
+                onChange={(e) => handleInputChange('wind_speed_kmph', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-amber-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Temp (°C)</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.temperature_c} 
+                onChange={(e) => handleInputChange('temperature_c', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-slate-200 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Pop Density</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.population_density} 
+                onChange={(e) => handleInputChange('population_density', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-slate-200 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Elevation (m)</span>
+              <input 
+                type="number" 
+                value={scenarioInputs.elevation_m} 
+                onChange={(e) => handleInputChange('elevation_m', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-slate-200 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Infra Vuln</span>
+              <input 
+                type="number" 
+                step="0.01"
+                value={scenarioInputs.infrastructure_vulnerability} 
+                onChange={(e) => handleInputChange('infrastructure_vulnerability', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-red-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Road Access</span>
+              <input 
+                type="number" 
+                step="0.01"
+                value={scenarioInputs.road_accessibility} 
+                onChange={(e) => handleInputChange('road_accessibility', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-purple-400 font-bold" 
+              />
+            </div>
+            <div>
+              <span className="text-slate-400 text-[10px] block">Dist Water (km)</span>
+              <input 
+                type="number" 
+                step="0.1"
+                value={scenarioInputs.distance_to_water_body} 
+                onChange={(e) => handleInputChange('distance_to_water_body', e.target.value)}
+                className="w-full bg-[#0b0f19] border border-slate-700 rounded p-1 text-slate-200 font-bold" 
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ASSESSMENT PENDING CARD (BEFORE CLICKING ASSESS DISASTER IMPACT) */}
+      {(isAssessmentPending || !locationImpact) && (
+        <div className="bg-[#121827] p-8 rounded-lg border border-amber-500/40 shadow-2xl text-center space-y-4 my-2">
+          <div className="inline-flex items-center justify-center p-3.5 bg-amber-950/70 text-amber-400 rounded-full border border-amber-800/80 mb-1">
+            <AlertCircle className="w-8 h-8 animate-pulse text-amber-400" />
+          </div>
           <div>
+            <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-1 bg-amber-950 text-amber-400 rounded border border-amber-800/80 inline-block mb-2">
+              Assessment Pending
+            </span>
+            <h3 className="text-base font-extrabold text-white font-mono uppercase tracking-wide">
+              No assessment has been run for {selectedDistrict}
+            </h3>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto mt-2 font-sans leading-relaxed">
+              Target location baseline features have been loaded into Tier 1. Click <strong className="text-amber-300 font-bold">"ASSESS DISASTER IMPACT"</strong> to run the Random Forest ML models and generate secondary disaster risks, severity metrics, exposure ratings, and resource allocation.
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={handleRunAssessment}
+              disabled={evaluating}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white font-mono font-extrabold text-xs uppercase tracking-wider rounded transition-all shadow-lg shadow-blue-950/60 flex items-center justify-center space-x-2 mx-auto border border-blue-400/30 cursor-pointer"
+            >
+              <Zap className="w-4 h-4 text-amber-300 animate-pulse" />
+              <span>Assess Disaster Impact for {selectedDistrict}</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. PREDICTION OUTPUT & IMPACT CARD */}
+      {!isAssessmentPending && locationImpact && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          {/* Main Assessment Summary Card (7 Cols) */}
+          <div className="lg:col-span-7 bg-[#121827] p-5 rounded-lg border border-slate-800/80 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
               <div className="flex items-center space-x-2">
-                <ShieldAlert className="w-4 h-4 text-red-400" />
-                <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">
-                  Priority Risk Assessment {currentRiskDisplay.isRealtime ? '(ACTIVE INFERENCE)' : '(BASELINE TOP RISK)'}
-                </h2>
+                <ShieldAlert className="w-5 h-5 text-red-400" />
+                <h3 className="text-sm font-extrabold text-white font-mono uppercase tracking-wider">
+                  TIER 2: ML PREDICTION OUTPUT ({locationImpact.location.toUpperCase()})
+                </h3>
               </div>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
-                currentRiskDisplay.severity === 'Critical' ? 'bg-red-950 text-red-400 border-red-800' :
-                currentRiskDisplay.severity === 'High' ? 'bg-amber-950 text-amber-400 border-amber-800' :
+              <span className={`px-2.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase border ${
+                locationImpact.severity === 'Critical' ? 'bg-red-950 text-red-400 border-red-800' :
+                locationImpact.severity === 'High' ? 'bg-amber-950 text-amber-400 border-amber-800' :
                 'bg-blue-950 text-blue-400 border-blue-800'
               }`}>
-                {currentRiskDisplay.severity} SEVERITY
+                {locationImpact.severity} SEVERITY
               </span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 mt-3 items-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               
-              <div className="sm:col-span-7 space-y-1">
-                <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Highest Secondary Disaster Threat</span>
-                <h3 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-                  <span className="text-red-400">{currentRiskDisplay.disaster}</span>
-                </h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  Primary Trigger Event: <strong className="text-white font-mono">{currentRiskDisplay.primary}</strong>
-                </p>
-                
-                <div className="pt-2 flex items-center space-x-4 text-xs font-mono text-slate-400">
-                  <div>Probability: <span className="text-white font-bold">{currentRiskDisplay.prob}%</span></div>
-                  <div>Status: <span className="text-emerald-400 font-bold">MONITORED</span></div>
+              <div className="bg-[#0b0f19] p-4 rounded border border-slate-800/90 space-y-2">
+                <span className="text-[10px] text-slate-400 font-mono uppercase">Predicted Secondary Hazard</span>
+                <h4 className="text-xl font-black text-red-400 font-mono flex items-center gap-2">
+                  <span>{locationImpact.predicted_secondary_disaster}</span>
+                </h4>
+                <div className="text-xs font-mono text-slate-300">
+                  Model Confidence: <strong className="text-white">{Math.round(locationImpact.probability * 100)}%</strong>
                 </div>
               </div>
 
-              {/* Risk Score Meter Gauge */}
-              <div className="sm:col-span-5 bg-[#0b0f19] p-3.5 rounded border border-slate-800 text-center space-y-2">
-                <span className="text-[10px] text-slate-400 font-mono uppercase tracking-wider block">Cascade Risk Score</span>
-                <div className="text-3xl font-black text-red-400 font-mono tracking-tight">
-                  {currentRiskDisplay.score}<span className="text-sm font-normal text-slate-400">/100</span>
+              <div className="bg-[#0b0f19] p-4 rounded border border-slate-800/90 space-y-2">
+                <span className="text-[10px] text-slate-400 font-mono uppercase">Cascade Risk Index</span>
+                <div className="text-2xl font-black text-white font-mono">
+                  {locationImpact.risk_score}<span className="text-xs text-slate-500 font-normal">/100</span>
                 </div>
-                
                 <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
                   <div 
-                    className={`h-full transition-all duration-500 ${
-                      currentRiskDisplay.score >= 80 ? 'bg-red-500' :
-                      currentRiskDisplay.score >= 60 ? 'bg-amber-500' : 'bg-blue-500'
-                    }`}
-                    style={{ width: `${currentRiskDisplay.score}%` }}
+                    className={`h-full ${locationImpact.risk_score >= 80 ? 'bg-red-500' : 'bg-amber-500'}`}
+                    style={{ width: `${locationImpact.risk_score}%` }}
                   ></div>
                 </div>
               </div>
 
             </div>
+
+            {/* Factor Explanations */}
+            <div className="space-y-2 pt-1">
+              <span className="text-[11px] font-mono font-bold text-slate-300 uppercase block">Transparent Factor-Impact Reasoning</span>
+              <ul className="space-y-1.5 text-xs text-slate-300 font-sans">
+                {locationImpact.risk_explanation.map((exp, idx) => (
+                  <li key={idx} className="flex items-start space-x-2 bg-[#0b0f19] p-2 rounded border border-slate-800/80">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>{exp}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
           </div>
 
-          <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between text-xs">
-            <span className="text-slate-400 text-[11px]">
-              Evaluated across 11 environmental & structural parameters
-            </span>
+          {/* Secondary Class Probabilities Chart (5 Cols) */}
+          <div className="lg:col-span-5 bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase">Secondary Class Probabilities (%)</h3>
+              <span className="text-[10px] text-slate-400 font-mono">5 Target Classes</span>
+            </div>
+
+            <div className="h-52">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={probChartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={9} />
+                  <YAxis stroke="#64748b" fontSize={9} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '11px' }} />
+                  <Bar dataKey="probability" radius={[3, 3, 0, 0]}>
+                    {probChartData.map((entry) => (
+                      <Cell 
+                        key={`cell-${entry.name}`} 
+                        fill={entry.name === locationImpact?.predicted_secondary_disaster ? '#ef4444' : '#3b82f6'} 
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
             <button
-              onClick={() => setActiveTab('predict')}
-              className="text-blue-400 hover:text-blue-300 font-mono text-xs font-semibold flex items-center gap-1 hover:underline"
+              onClick={() => setActiveTab('resources')}
+              className="w-full py-2 bg-blue-950/80 hover:bg-blue-900 text-blue-300 rounded text-xs font-mono font-bold border border-blue-800/60 transition-all flex items-center justify-center gap-1.5"
             >
-              <span>Custom Inference</span>
-              <ArrowRight className="w-3 h-3" />
+              <span>View Full Resource Allocation Table</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>
-        </div>
-
-        {/* SECONDARY METRICS (5 Cols Grid) */}
-        <div className="lg:col-span-5 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-1 gap-3">
-          
-          <div className="bg-[#121827] p-3.5 rounded-lg border border-slate-800/80 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Analyzed Scenarios</span>
-              <h4 className="text-xl font-black text-white font-mono mt-0.5">
-                {stats?.dataset_size ? stats.dataset_size.toLocaleString() : '3,500'}
-              </h4>
-              <p className="text-[10px] text-slate-400">11 Synthetic Feature Parameters</p>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded text-blue-400 border border-slate-800">
-              <Database className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-[#121827] p-3.5 rounded-lg border border-slate-800/80 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Disaster Model Accuracy</span>
-              <h4 className="text-xl font-black text-emerald-400 font-mono mt-0.5">
-                {stats?.disaster_model?.accuracy ? `${(stats.disaster_model.accuracy * 100).toFixed(1)}%` : '92.4%'}
-              </h4>
-              <p className="text-[10px] text-slate-400">Random Forest (5 Target Classes)</p>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded text-emerald-400 border border-slate-800">
-              <Activity className="w-5 h-5" />
-            </div>
-          </div>
-
-          <div className="bg-[#121827] p-3.5 rounded-lg border border-slate-800/80 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">Severity Model Accuracy</span>
-              <h4 className="text-xl font-black text-amber-400 font-mono mt-0.5">
-                {stats?.severity_model?.accuracy ? `${(stats.severity_model.accuracy * 100).toFixed(1)}%` : '82.4%'}
-              </h4>
-              <p className="text-[10px] text-slate-400">Random Forest (4 Ordinal Levels)</p>
-            </div>
-            <div className="p-2.5 bg-slate-900 rounded text-amber-400 border border-slate-800">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
 
         </div>
+      )}
 
-      </div>
-
-      {/* C. PRIMARY INTELLIGENCE AREA (TWO-COLUMN CHARTS) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-        
-        {/* LEFT: Secondary Disaster Risk Distribution (7 Cols) */}
-        <div className="lg:col-span-7 bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
+      {/* 5. TIER 3: DERIVED EXPOSURE ASSESSMENT ("WHAT COULD BE AFFECTED?") */}
+      {locationImpact && (
+        <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
             <div className="flex items-center space-x-2">
-              <BarChart2 className="w-4 h-4 text-blue-400" />
+              <Building className="w-4 h-4 text-purple-400" />
               <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
-                Secondary Disaster Risk Distribution
+                TIER 3: DERIVED EXPOSURE ASSESSMENT ({selectedDistrict})
               </h3>
             </div>
-            <span className="text-[10px] text-slate-400 font-mono">Sorted by Base Frequency</span>
+            <span className="text-[10px] bg-purple-950 text-purple-400 px-2 py-0.5 rounded border border-purple-800 font-mono font-bold">
+              CATEGORY-LEVEL VULNERABILITY RATINGS
+            </span>
           </div>
 
-          <div className="h-60">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
-                <XAxis type="number" stroke="#475569" fontSize={10} tickLine={false} />
-                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={11} width={135} tickLine={false} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', fontSize: '11px', borderRadius: '4px' }}
-                  formatter={(value) => [`${value} Scenarios`, 'Count']}
-                />
-                <Bar dataKey="count" radius={[0, 4, 4, 0]} barSize={16}>
-                  {chartData.map((entry) => (
-                    <Cell key={`cell-${entry.name}`} fill={CATEGORY_COLORS[entry.name] || '#3b82f6'} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="grid grid-cols-5 gap-1 pt-1 border-t border-slate-800/80 text-[10px] font-mono text-center text-slate-400">
-            {chartData.map(item => (
-              <div key={item.name} className="truncate">
-                <span className="font-bold text-slate-200 block">{item.percentage}%</span>
-                <span className="text-slate-500 truncate block">{item.name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* RIGHT: Cascade Severity Profile (5 Cols Donut Chart) */}
-        <div className="lg:col-span-5 bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3 flex flex-col justify-between">
-          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-            <div className="flex items-center space-x-2">
-              <AlertTriangle className="w-4 h-4 text-amber-400" />
-              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
-                Cascade Severity Profile
-              </h3>
-            </div>
-            <span className="text-[10px] text-slate-400 font-mono">4-Tier Scale</span>
-          </div>
-
-          <div className="h-48 relative flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={severityData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={80}
-                  paddingAngle={4}
-                  dataKey="count"
-                >
-                  {severityData.map((entry) => (
-                    <Cell key={`sev-${entry.name}`} fill={SEVERITY_COLORS[entry.name] || '#3b82f6'} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', fontSize: '11px', borderRadius: '4px' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-
-            {/* Donut Center Label */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-lg font-black text-white font-mono">3,500</span>
-              <span className="text-[9px] text-slate-400 uppercase font-mono tracking-wider">Scenarios</span>
-            </div>
-          </div>
-
-          {/* Compact Readable Legend */}
-          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
-            {severityData.map(item => (
-              <div key={item.name} className="flex items-center justify-between bg-[#0b0f19] px-2.5 py-1 rounded border border-slate-800">
-                <div className="flex items-center space-x-1.5">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: SEVERITY_COLORS[item.name] }}></span>
-                  <span className="text-slate-300">{item.name}</span>
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+            {locationImpact.potentially_affected_systems.map((sys, idx) => (
+              <div key={idx} className="bg-[#0b0f19] p-3 rounded border border-slate-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-200 truncate">{sys.category}</span>
+                  <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                    sys.exposure_level.includes('HIGH') ? 'bg-red-950 text-red-400 border-red-800' :
+                    sys.exposure_level.includes('ELEVATED') ? 'bg-amber-950 text-amber-400 border-amber-800' :
+                    'bg-slate-900 text-slate-300 border-slate-700'
+                  }`}>
+                    {sys.exposure_level}
+                  </span>
                 </div>
-                <span className="font-bold text-slate-200">{item.percentage}%</span>
+                
+                <p className="text-[11px] text-slate-400 line-clamp-3 leading-snug">{sys.detail}</p>
+
+                <div className="pt-1.5 border-t border-slate-800/80 text-[10px] font-mono text-slate-300">
+                  Observed Metric: <span className="text-blue-400 font-bold">{sys.metric}</span>
+                </div>
               </div>
             ))}
           </div>
-
         </div>
+      )}
 
-      </div>
-
-      {/* D. REGIONAL RISK OVERVIEW (GEOSPATIAL SECTOR MATRIX) */}
-      <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-          <div className="flex items-center space-x-2">
-            <MapPin className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
-              Regional Risk Overview
-            </h3>
-          </div>
-          <span className="text-[10px] bg-slate-900 text-emerald-400 font-mono px-2 py-0.5 rounded border border-slate-800 flex items-center gap-1">
-            <ShieldCheck className="w-3 h-3" /> GIS SPATIAL ENGINE READY
-          </span>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {regionalSectors.map((sector) => (
-            <div 
-              key={sector.id} 
-              className="bg-[#0b0f19] p-3 rounded border border-slate-800/90 space-y-2 hover:border-slate-700 transition-colors"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white truncate">{sector.name}</span>
-                <span className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded border ${sector.color}`}>
-                  {sector.level}
-                </span>
-              </div>
-              
-              <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between">
-                <span>Primary Risk:</span>
-                <span className="text-slate-200 font-semibold">{sector.hazard}</span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-1 pt-1.5 border-t border-slate-800 text-[10px] font-mono text-slate-400 text-center">
-                <div>Rain: <span className="text-blue-400 font-bold block">{sector.rain}</span></div>
-                <div>Elev: <span className="text-amber-400 font-bold block">{sector.elev}</span></div>
-                <div>Pop: <span className="text-slate-300 font-bold block">{sector.pop}</span></div>
-              </div>
+      {/* 6. TIER 4: CONCEPTUAL CASCADE CHAIN REACTION DIAGRAM */}
+      {locationImpact && (
+        <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <Layers className="w-4 h-4 text-amber-400" />
+              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
+                TIER 4: CONCEPTUAL CASCADE PROPAGATION ("WHAT HAPPENS NEXT?")
+              </h3>
             </div>
-          ))}
-        </div>
-      </div>
+            <span className="text-[10px] bg-amber-950 text-amber-400 font-mono px-2 py-0.5 rounded border border-amber-800 font-bold">
+              PROOFS-OF-CONCEPT DECISION SUPPORT STEP
+            </span>
+          </div>
 
-      {/* E. SCENARIO INTELLIGENCE AREA */}
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-2 text-center">
+            {locationImpact.cascade_chain.map((step, idx) => (
+              <div key={idx} className="relative bg-[#0b0f19] p-3 rounded border border-slate-800 flex flex-col justify-between space-y-2">
+                <span className="text-[9px] font-mono text-slate-500 font-bold block">STEP 0{idx+1}</span>
+                <p className="text-xs font-mono font-bold text-slate-200 leading-tight">{step}</p>
+                {idx < locationImpact.cascade_chain.length - 1 && (
+                  <div className="hidden md:block absolute -right-2 top-1/2 -translate-y-1/2 z-10 text-slate-600">
+                    ➔
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 7. RESOURCE RESPONSE PLAN & LOCATION RESPONSE PRIORITIES */}
+      {locationImpact && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          
+          {/* Resource Allocation Table (7 Cols) */}
+          <div className="lg:col-span-7 bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase">
+                Resource Response Plan ({selectedDistrict})
+              </h3>
+              <span className="text-[10px] text-slate-400 font-mono">
+                Shortage Count: <strong className="text-red-400">{locationImpact.total_shortages}</strong>
+              </span>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-mono text-slate-300">
+                <thead className="bg-[#0b0f19] uppercase text-[10px] text-slate-400">
+                  <tr>
+                    <th className="px-3 py-2">Resource</th>
+                    <th className="px-3 py-2">Required</th>
+                    <th className="px-3 py-2">Available</th>
+                    <th className="px-3 py-2">Allocated</th>
+                    <th className="px-3 py-2">Shortage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-[11px]">
+                  {locationImpact.resource_allocation.map((item) => (
+                    <tr key={item.resource} className="hover:bg-slate-800/30">
+                      <td className="px-3 py-2 font-bold text-white">{item.resource}</td>
+                      <td className="px-3 py-2 text-blue-400 font-extrabold">{item.required}</td>
+                      <td className="px-3 py-2 text-slate-400">{item.available}</td>
+                      <td className="px-3 py-2 text-emerald-400 font-bold">{item.allocated}</td>
+                      <td className="px-3 py-2">
+                        {item.shortage > 0 ? (
+                          <span className="px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-bold text-[10px]">
+                            +{item.shortage} SHORT
+                          </span>
+                        ) : (
+                          <span className="text-slate-500">0</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Response Priorities (5 Cols) */}
+          <div className="lg:col-span-5 bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase">
+                Location Response Priorities
+              </h3>
+              <span className="text-[10px] text-slate-400 font-mono">Ranked Decision Support</span>
+            </div>
+
+            <div className="space-y-2">
+              {locationImpact.response_priorities.map((p) => (
+                <div key={p.rank} className="bg-[#0b0f19] p-2.5 rounded border border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold font-mono text-white flex items-center gap-1.5">
+                      <span className="px-1.5 py-0.5 rounded bg-blue-950 text-blue-400 text-[10px]">RANK #{p.rank}</span>
+                      <span>{p.resource}</span>
+                    </span>
+                    <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-red-950 text-red-400 border border-red-800 font-bold">
+                      {p.priority}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">{p.reason}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </div>
+      )}
+
+      {/* 8. LOCATION-AWARE WHAT-IF SIMULATOR */}
+      {simModified && (
+        <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
+            <div className="flex items-center space-x-2">
+              <Sliders className="w-4 h-4 text-blue-400" />
+              <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
+                Location What-If Simulator ({selectedDistrict})
+              </h3>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono">"What if conditions worsen in {selectedDistrict}?"</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+            
+            {/* Simulator Controls (5 Cols) */}
+            <div className="md:col-span-5 bg-[#0b0f19] p-3.5 rounded border border-slate-800 space-y-3">
+              <span className="text-xs font-bold font-mono text-slate-300 block border-b border-slate-800 pb-1">
+                Modified Scenario Parameters ({selectedDistrict})
+              </span>
+
+              <div className="space-y-3 text-xs font-mono">
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Rainfall:</span>
+                    <span className="text-blue-400 font-bold">{simModified.rainfall_mm} mm</span>
+                  </div>
+                  <input 
+                    type="range" min="0" max="400" step="5" 
+                    value={simModified.rainfall_mm}
+                    onChange={(e) => setSimModified(prev => ({ ...prev, rainfall_mm: parseFloat(e.target.value) }))}
+                    className="w-full accent-blue-500 bg-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">River Stage:</span>
+                    <span className="text-blue-400 font-bold">{simModified.river_level_m} m</span>
+                  </div>
+                  <input 
+                    type="range" min="0.5" max="14.0" step="0.5" 
+                    value={simModified.river_level_m}
+                    onChange={(e) => setSimModified(prev => ({ ...prev, river_level_m: parseFloat(e.target.value) }))}
+                    className="w-full accent-blue-500 bg-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-slate-400">Soil Saturation:</span>
+                    <span className="text-emerald-400 font-bold">{Math.round(simModified.soil_moisture * 100)}%</span>
+                  </div>
+                  <input 
+                    type="range" min="0.10" max="1.00" step="0.05" 
+                    value={simModified.soil_moisture}
+                    onChange={(e) => setSimModified(prev => ({ ...prev, soil_moisture: parseFloat(e.target.value) }))}
+                    className="w-full accent-emerald-500 bg-slate-900"
+                  />
+                </div>
+              </div>
+
+              <button
+                onClick={handleRunSim}
+                disabled={simLoading}
+                className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-mono font-bold text-xs uppercase tracking-wider rounded transition-all flex items-center justify-center gap-1.5"
+              >
+                <Play className={`w-3.5 h-3.5 ${simLoading ? 'animate-spin' : ''}`} />
+                <span>Run Simulation Comparison</span>
+              </button>
+            </div>
+
+            {/* Simulation Results (7 Cols) */}
+            <div className="md:col-span-7 bg-[#0b0f19] p-3.5 rounded border border-slate-800 space-y-3">
+              {simResult ? (
+                <>
+                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                    <div className="bg-[#121827] p-3 rounded border border-slate-800">
+                      <span className="text-slate-400 text-[10px] block">Baseline Scenario A</span>
+                      <h4 className="text-sm font-bold text-white mt-1">{simResult.baseline.predicted_secondary_disaster}</h4>
+                      <div className="text-slate-400 mt-1">
+                        Risk Score: <strong className="text-white">{simResult.baseline.risk_score}/100</strong>
+                      </div>
+                    </div>
+
+                    <div className="bg-[#121827] p-3 rounded border border-blue-800/80">
+                      <span className="text-blue-400 text-[10px] block font-bold">Modified Scenario B ({selectedDistrict})</span>
+                      <h4 className="text-sm font-bold text-red-400 mt-1">{simResult.modified.predicted_secondary_disaster}</h4>
+                      <div className="text-slate-400 mt-1">
+                        Risk Score: <strong className="text-red-400">{simResult.modified.risk_score}/100</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-[#121827] rounded border border-slate-800 text-xs font-mono text-slate-300 flex items-center gap-2">
+                    <TrendingUp className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>{simResult.impact_summary}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-2">
+                  <Sliders className="w-8 h-8 text-slate-600 animate-bounce" />
+                  <span className="text-xs font-mono">Adjust sliders on the left and click <strong>Run Simulation Comparison</strong></span>
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      )}
+
+      {/* 9. SCENARIO INTELLIGENCE (DEMOS) */}
       <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
         <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
           <div className="flex items-center space-x-2">
             <Zap className="w-4 h-4 text-amber-400" />
             <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
-              Scenario Intelligence
+              Scenario Intelligence (Preconfigured Test Cases)
             </h3>
           </div>
-          <span className="text-[10px] text-slate-400 font-mono">3 Preconfigured Test Scenarios</span>
+          <span className="text-[10px] text-slate-400 font-mono">3 Regional Scenarios</span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -478,89 +832,19 @@ export default function DashboardPage({ setActiveTab, setPredictFormData, setLas
                   <div>Rain: <span className="text-blue-400">{demo.data.rainfall_mm} mm</span></div>
                   <div>Wind: <span className="text-amber-400">{demo.data.wind_speed_kmph} km/h</span></div>
                   <div>Soil: <span className="text-emerald-400">{Math.round(demo.data.soil_moisture * 100)}%</span></div>
-                  <div>Vuln: <span className="text-red-400">{Math.round(demo.data.infrastructure_vulnerability * 100)}%</span></div>
+                  <div>Location: <span className="text-slate-200">{demo.location || 'Chennai'}</span></div>
                 </div>
               </div>
 
               <button
-                onClick={() => handleRunDemo(demo)}
-                disabled={activeDemo === demo.id}
+                onClick={() => handleRunDemoScenario(demo)}
                 className="w-full py-1.5 bg-blue-600/20 hover:bg-blue-600/40 text-blue-400 hover:text-white border border-blue-500/30 rounded text-xs font-mono font-bold transition-all flex items-center justify-center gap-1"
               >
-                {activeDemo === demo.id ? (
-                  <span>Executing AI Inference...</span>
-                ) : (
-                  <>
-                    <span>Run Demo Scenario</span>
-                    <ArrowRight className="w-3 h-3" />
-                  </>
-                )}
+                <span>Run Location Demo Scenario</span>
+                <ArrowRight className="w-3 h-3" />
               </button>
             </div>
           ))}
-        </div>
-      </div>
-
-      {/* F. RECENT INCIDENT EVALUATIONS LOG */}
-      <div className="bg-[#121827] p-4 rounded-lg border border-slate-800/80 space-y-3">
-        <div className="flex items-center justify-between border-b border-slate-800/80 pb-2.5">
-          <div className="flex items-center space-x-2">
-            <Server className="w-4 h-4 text-emerald-400" />
-            <h3 className="text-xs font-bold text-slate-200 font-mono uppercase tracking-wider">
-              Recent Incident Evaluations
-            </h3>
-          </div>
-          <span className="text-[10px] text-slate-400 font-mono">Live Operations Dispatch Log</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs text-slate-300">
-            <thead className="bg-[#0b0f19] uppercase font-mono text-[10px] text-slate-400">
-              <tr>
-                <th className="px-3.5 py-2">Time</th>
-                <th className="px-3.5 py-2">Primary Event</th>
-                <th className="px-3.5 py-2">Predicted Secondary</th>
-                <th className="px-3.5 py-2">Severity</th>
-                <th className="px-3.5 py-2">Risk Score</th>
-                <th className="px-3.5 py-2">Status</th>
-                <th className="px-3.5 py-2 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-mono text-[11px]">
-              {recentLog.map((log) => (
-                <tr key={log.id} className="hover:bg-slate-800/30 transition-colors">
-                  <td className="px-3.5 py-2.5 text-slate-400">{log.time}</td>
-                  <td className="px-3.5 py-2.5 font-semibold text-slate-200">{log.primary}</td>
-                  <td className="px-3.5 py-2.5 font-bold text-blue-400">{log.secondary}</td>
-                  <td className="px-3.5 py-2.5">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      log.severity === 'Critical' ? 'bg-red-950 text-red-400 border border-red-800' :
-                      log.severity === 'High' ? 'bg-amber-950 text-amber-400 border border-amber-800' :
-                      'bg-blue-950 text-blue-400 border border-blue-800'
-                    }`}>
-                      {log.severity}
-                    </span>
-                  </td>
-                  <td className="px-3.5 py-2.5 font-extrabold text-red-400">
-                    {log.risk}<span className="text-[10px] text-slate-500 font-normal">/100</span>
-                  </td>
-                  <td className="px-3.5 py-2.5">
-                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800">
-                      {log.status}
-                    </span>
-                  </td>
-                  <td className="px-3.5 py-2.5 text-right">
-                    <button
-                      onClick={() => handleLoadLogEntry(log)}
-                      className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded font-semibold transition-all"
-                    >
-                      Load
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 

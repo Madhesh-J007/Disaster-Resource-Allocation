@@ -21,6 +21,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
 
 # Virtual Environments
 .env
@@ -37,6 +38,7 @@ venv.bak/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+.vite/
 .npm
 *.log
 
@@ -66,4 +68,5 @@ Thumbs.db
 # ==========================================
 *.log
 *.tmp
+scratch/
 task-*.log

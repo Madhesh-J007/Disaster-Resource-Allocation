@@ -20,6 +20,16 @@ export async function fetchHealth() {
   return handleResponse(res);
 }
 
+export async function fetchDistricts() {
+  const res = await fetch(`${API_BASE}/districts`);
+  return handleResponse(res);
+}
+
+export async function fetchDistrictInfo(districtName) {
+  const res = await fetch(`${API_BASE}/districts/${encodeURIComponent(districtName)}`);
+  return handleResponse(res);
+}
+
 export async function fetchStatistics() {
   const res = await fetch(`${API_BASE}/statistics`);
   return handleResponse(res);
@@ -39,6 +49,15 @@ export async function predictDisaster(conditions) {
   return handleResponse(res);
 }
 
+export async function assessLocationImpact(payload) {
+  const res = await fetch(`${API_BASE}/location-impact`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  return handleResponse(res);
+}
+
 export async function allocateResources(data) {
   const res = await fetch(`${API_BASE}/resource-allocation`, {
     method: 'POST',
@@ -48,11 +67,11 @@ export async function allocateResources(data) {
   return handleResponse(res);
 }
 
-export async function runSimulation(baseline, modified) {
+export async function runSimulation(baseline, modified, location = "Chennai") {
   const res = await fetch(`${API_BASE}/simulate`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ baseline, modified })
+    body: JSON.stringify({ baseline, modified, location })
   });
   return handleResponse(res);
 }
